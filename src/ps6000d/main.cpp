@@ -37,6 +37,7 @@
 #include "ps2000.h"
 #include "PicoSCPIServer.h"
 #include <signal.h>
+#include <cctype>
 
 PICO_STATUS (*picoGetUnitInfo) (int16_t, int8_t *, int16_t, int16_t *, PICO_INFO);
 PICO_INFO Open2000();
@@ -179,10 +180,10 @@ int main(int argc, char* argv[])
 		case 2:
 		{
 			status = Open2000();
-			break;
-			status = Open2000A();
 			if(status == 0)
 				break;
+			status = Open2000A();
+			break;
 		}
 		case 3:
 		{
@@ -213,13 +214,36 @@ int main(int argc, char* argv[])
 	}
 
 	//See what we got
-	if (PICO2000 == g_pico_type) 
+	if (PICO2000 == g_pico_type)
 	{
-		char buf[128];
-		if (ps2000_get_unit_info(g_hScope, (int8_t*)buf, sizeof(buf), PS2000_VARIANT_INFO) == PICO_OK) 
+		LogIndenter li;
+		auto logInfo = [&](PS2000_INFO field, const char* label, std::string* dest)
 		{
-			LogVerbose("Variant info:  %s\n", buf);
-		}
+			char buf[128] = {};
+			int16_t ret = ps2000_get_unit_info(g_hScope, reinterpret_cast<int8_t*>(buf), sizeof(buf), field);
+			if(ret > 0)
+			{
+				if(label)
+					LogVerbose("%s%s\n", label, buf);
+				if(dest)
+					*dest = buf;
+			}
+		};
+
+		logInfo(PS2000_DRIVER_VERSION, "Driver version:   ", &g_fwver);
+		logInfo(PS2000_USB_VERSION, "USB version:      ", nullptr);
+		logInfo(PS2000_HARDWARE_VERSION, "Hardware version: ", nullptr);
+		logInfo(PS2000_VARIANT_INFO, "Variant info:     ", &g_model);
+		logInfo(PS2000_BATCH_AND_SERIAL, "Batch/serial:     ", &g_serial);
+		logInfo(PS2000_CAL_DATE, "Cal date:         ", nullptr);
+		logInfo(PS2000_DRIVER_PATH, "Driver path:      ", nullptr);
+
+		if(g_model.empty())
+			g_model = "PicoScope 2000";
+		if(g_serial.empty())
+			g_serial = "UNKNOWN";
+		if(g_fwver.empty())
+			g_fwver = "UNKNOWN";
 	}
 	else
 	{
@@ -309,9 +333,11 @@ int main(int argc, char* argv[])
 
 	//Limit to two channels only while on USB power
 	if(limitChannels)
-		g_numChannels = '2' - '0';
-	else
+		g_numChannels = 2;
+	else if( (g_model.size() > 1) && isdigit(static_cast<unsigned char>(g_model[1])) )
 		g_numChannels = g_model[1] - '0';
+	else
+		g_numChannels = 2;
 
 	//Initial channel state setup
 	for(size_t i=0; i<g_numChannels; i++)
@@ -319,6 +345,8 @@ int main(int argc, char* argv[])
 		switch(g_pico_type)
 		{
 			case PICO2000:
+				ps2000_set_channel(g_hScope, static_cast<int16_t>(i), 0, 1, PS2000_1V);
+				break;
 			case PICO2000A:
 				ps2000aSetChannel(g_hScope, (PS2000A_CHANNEL)i, 0, PS2000A_DC, PS2000A_1V, 0.0f);
 				break;
@@ -347,6 +375,7 @@ int main(int argc, char* argv[])
 		g_coupling[i] = PICO_DC;
 		g_range[i] = PICO_X1_PROBE_1V;
 		g_range_psospa[i] = PICO_X1_PROBE_NV;
+		g_range_2000[i] = PS2000_1V;
 		g_range_2000a[i] = PS2000A_1V;
 		g_range_3000e[i] = 1000000000;
 		g_range_3000a[i] = PS3000A_1V;
@@ -394,6 +423,9 @@ int main(int argc, char* argv[])
 		default:
 			g_numDigitalPods = 0;
 	}
+
+	if(g_pico_type == PICO2000)
+		g_numDigitalPods = 0;
 
 	for(size_t i=0; i<g_numDigitalPods; i++)
 	{
@@ -446,6 +478,8 @@ int main(int argc, char* argv[])
 	switch(g_pico_type)
 	{
 		case PICO2000:
+			ps2000_close_unit(g_hScope);
+			break;
 		case PICO2000A:
 			ps2000aCloseUnit(g_hScope);
 			break;
@@ -483,6 +517,8 @@ void OnQuit(int /*signal*/)
 	switch(g_pico_type)
 	{
 		case PICO2000:
+			ps2000_close_unit(g_hScope);
+			break;
 		case PICO2000A:
 			ps2000aCloseUnit(g_hScope);
 			break;

@@ -48,6 +48,7 @@
 #include "ps4000aApi.h"
 #include "ps3000aApi.h"
 #include "ps2000aApi.h"
+#include "ps2000.h"
 #include "psospaApi.h"
 #include "PicoStatus.h"
 #include "PicoVersion.h"
@@ -88,6 +89,7 @@ extern std::map<size_t, bool> g_channelOn;
 extern std::map<size_t, double> g_roundedRange;
 extern std::map<size_t, PICO_COUPLING> g_coupling;
 extern std::map<size_t, PICO_CONNECT_PROBE_RANGE> g_range;
+extern std::map<size_t, enPS2000Range> g_range_2000;
 extern std::map<size_t, enPS2000ARange> g_range_2000a;
 extern std::map<size_t, enPS3000ARange> g_range_3000a;
 extern std::map<size_t, enPS4000ARange> g_range_4000a;

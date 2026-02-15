@@ -93,6 +93,8 @@ void WaveformServerThread()
 			switch(g_pico_type)
 			{
 				case PICO2000:
+					ready = ps2000_ready(g_hScope);
+					break;
 				case PICO2000A:
 					ps2000aIsReady(g_hScope, &ready);
 					break;
@@ -136,6 +138,8 @@ void WaveformServerThread()
 			switch(g_pico_type)
 			{
 				case PICO2000:
+					status = ps2000_stop(g_hScope) ? PICO_OK : PICO_OPERATION_FAILED;
+					break;
 				case PICO2000A:
 					status = ps2000aStop(g_hScope);
 					break;
@@ -171,9 +175,10 @@ void WaveformServerThread()
 					switch(g_pico_type)
 					{
 						case PICO2000:
+							break;
 						case PICO2000A:
 							ps2000aSetDataBuffer(g_hScope, (PS2000A_CHANNEL)ch, NULL,
-												0, 0, PS2000A_RATIO_MODE_NONE);
+										0, 0, PS2000A_RATIO_MODE_NONE);
 							break;
 						case PICO3000A:
 							ps3000aSetDataBuffer(g_hScope, (PS3000A_CHANNEL)ch, NULL,
@@ -221,9 +226,11 @@ void WaveformServerThread()
 					switch(g_pico_type)
 					{
 						case PICO2000:
+							status = PICO_OK;
+							break;
 						case PICO2000A:
 							status = ps2000aSetDataBuffer(g_hScope, (PS2000A_CHANNEL)ch, waveformBuffers[i],
-														g_captureMemDepth, 0, PS2000A_RATIO_MODE_NONE);
+												g_captureMemDepth, 0, PS2000A_RATIO_MODE_NONE);
 							break;
 						case PICO3000A:
 							status = ps3000aSetDataBuffer(g_hScope, (PS3000A_CHANNEL)ch, waveformBuffers[i],
@@ -260,6 +267,32 @@ void WaveformServerThread()
 			switch(g_pico_type)
 			{
 				case PICO2000:
+				{
+					int16_t* channelBuffers[4] = {nullptr, nullptr, nullptr, nullptr};
+					size_t analogCount = (g_numChannels < 4) ? g_numChannels : 4;
+					for(size_t ch=0; ch<analogCount; ch++)
+					{
+						auto it = waveformBuffers.find(ch);
+						if( (it != waveformBuffers.end()) && channelOn[ch])
+							channelBuffers[ch] = it->second;
+					}
+					int32_t captured = ps2000_get_values(
+						g_hScope,
+						channelBuffers[0],
+						channelBuffers[1],
+						channelBuffers[2],
+						channelBuffers[3],
+						&overflow,
+						static_cast<int32_t>(g_captureMemDepth));
+					if(captured <= 0)
+					{
+						LogFatal("ps2000_get_values failed (code %d)\n", captured);
+					}
+					numSamples = captured;
+					numSamples_int = captured;
+					status = PICO_OK;
+					break;
+				}
 				case PICO2000A:
 					status = ps2000aGetValues(g_hScope, 0, &numSamples_int, 1, PS2000A_RATIO_MODE_NONE, 0, &overflow);
 					numSamples = numSamples_int;

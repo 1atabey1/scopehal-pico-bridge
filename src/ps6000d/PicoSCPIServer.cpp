@@ -139,6 +139,7 @@
 			Stops the function generator
  */
 
+#include "log.h"
 #include "ps6000d.h"
 #include "PicoSCPIServer.h"
 #include <string.h>
@@ -154,6 +155,7 @@ using namespace std;
 map<size_t, bool> g_channelOn;
 map<size_t, PICO_COUPLING> g_coupling;
 map<size_t, PICO_CONNECT_PROBE_RANGE> g_range;
+map<size_t, enPS2000Range> g_range_2000;
 map<size_t, enPS2000ARange> g_range_2000a;
 map<size_t, enPS3000ARange> g_range_3000a;
 map<size_t, enPS4000ARange> g_range_4000a;
@@ -255,6 +257,60 @@ void ReconfigAWG();
 
 extern uint32_t g_lastTxSeq;
 
+static int16_t Ps2000Coupling(PICO_COUPLING coupling)
+{
+	return (coupling == PICO_AC) ? 0 : 1;
+}
+
+static PS2000_WAVE_TYPE ToPs2000WaveType(PS2000A_WAVE_TYPE type)
+{
+	switch(type)
+	{
+		case PS2000A_SINE:
+			return PS2000_SINE;
+		case PS2000A_SQUARE:
+			return PS2000_SQUARE;
+		case PS2000A_TRIANGLE:
+			return PS2000_TRIANGLE;
+		case PS2000A_RAMP_UP:
+			return PS2000_RAMPUP;
+		case PS2000A_RAMP_DOWN:
+			return PS2000_RAMPDOWN;
+		case PS2000A_SINC:
+			return PS2000_SINC;
+		case PS2000A_GAUSSIAN:
+			return PS2000_GAUSSIAN;
+		case PS2000A_HALF_SINE:
+			return PS2000_HALF_SINE;
+		case PS2000A_DC_VOLTAGE:
+			return PS2000_DC_VOLTAGE;
+		default:
+			return PS2000_SINE;
+	}
+}
+
+static PS2000_TDIR ToPs2000Direction(PICO_THRESHOLD_DIRECTION dir)
+{
+	return (dir == PICO_FALLING) ? PS2000_FALLING : PS2000_RISING;
+}
+
+static PS2000_CHANNEL ToPs2000Channel(size_t chan)
+{
+	switch(chan)
+	{
+		case 0:
+			return PS2000_CHANNEL_A;
+		case 1:
+			return PS2000_CHANNEL_B;
+		case 2:
+			return PS2000_CHANNEL_C;
+		case 3:
+			return PS2000_CHANNEL_D;
+		default:
+			return PS2000_NONE;
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Construction / destruction
 
@@ -314,6 +370,8 @@ PicoSCPIServer::~PicoSCPIServer()
 		switch(g_pico_type)
 		{
 			case PICO2000:
+				ps2000_set_channel(g_hScope, static_cast<int16_t>(it.first), 0, 1, PS2000_1V);
+				break;
 			case PICO2000A:
 				ps2000aSetChannel(g_hScope, (PS2000A_CHANNEL)it.first, 0, PS2000A_DC, PS2000A_1V, 0.0f);
 				break;
@@ -343,6 +401,7 @@ PicoSCPIServer::~PicoSCPIServer()
 		switch(g_pico_type)
 		{
 			case PICO2000:
+				break;
 			case PICO2000A:
 				ps2000aSetDigitalPort(g_hScope, (PS2000A_DIGITAL_PORT)(PICO_PORT0 + i), 0, 0);
 				break;
@@ -548,6 +607,11 @@ vector<size_t> PicoSCPIServer::GetSampleRates()
 	switch(g_pico_type)
 	{
 		case PICO2000:
+			//PS2000 supports timebases 0-19 sequentially
+			//Each successive timebase has twice the sampling interval of the previous one
+			for(int i = 0; i <= PS2000_MAX_TIMEBASE; i++)
+				vec.push_back(i);
+			break;
 		case PICO2000A:
 			if(g_model.find("2205MSO") != string::npos)
 			{
@@ -705,6 +769,22 @@ vector<size_t> PicoSCPIServer::GetSampleRates()
 		switch(g_pico_type)
 		{
 			case PICO2000:
+			{
+				int32_t interval = 0;
+				int16_t units = 0;
+				int16_t ok = ps2000_get_timebase(g_hScope, i, 1, &interval, &units, 1, &maxSamples_int);
+				if(interval != 0 && ok != 0)
+				{
+					status = PICO_OK;
+					maxSamples = maxSamples_int;
+					intervalNs = interval;
+				}
+				else
+				{
+					status = PICO_INVALID_TIMEBASE;
+				}
+				break;
+			}
 			case PICO2000A:
 				status = ps2000aGetTimebase2(g_hScope, i, 1, &intervalNs_f, 1, &maxSamples_int, 0);
 				maxSamples = maxSamples_int;
@@ -770,12 +850,29 @@ vector<size_t> PicoSCPIServer::GetSampleDepths()
 	PICO_STATUS status;
 	status = PICO_RESERVED_1;
 
-	//Ask for max memory depth at timebase number 10
+	//Ask for max memory depth at a conservative timebase
+	//For PS2000, use timebase 5 which should be available in most configurations
 	//We cannot use the first few timebases because those are sometimes not available depending on channel count etc
 	int ntimebase = 10;
 	switch(g_pico_type)
 	{
 		case PICO2000:
+		{
+			//PS2000 has timebases 0-19, use timebase 5 for depth query
+			ntimebase = 5;
+			int32_t interval = 0;
+			int16_t units = 0;
+			int16_t ok = ps2000_get_timebase(g_hScope, ntimebase, 1, &interval, &units, 1, &maxSamples_int);
+			if(ok != 0)
+			{
+				status = PICO_OK;
+				maxSamples = maxSamples_int;
+				intervalNs = interval;
+			}
+			else
+				status = PICO_INVALID_TIMEBASE;
+			break;
+		}
 		case PICO2000A:
 			status = ps2000aGetTimebase2(g_hScope, ntimebase, 1, &intervalNs_f, 1, &maxSamples_int, 0);
 			maxSamples = maxSamples_int;
@@ -862,6 +959,15 @@ bool PicoSCPIServer::OnCommand(
 			switch(g_pico_type)
 			{
 				case PICO2000:
+					tempRange = g_awgRange;
+					tempOffset = g_awgOffset;
+					g_awgRange = 0;
+					g_awgOffset = 0;
+					ReconfigAWG();
+					g_awgRange = tempRange;
+					g_awgOffset = tempOffset;
+					g_awgOn = false;
+					break;
 				case PICO2000A:
 					tempRange = g_awgRange;
 					tempOffset = g_awgOffset;
@@ -1104,6 +1210,14 @@ bool PicoSCPIServer::OnCommand(
 				switch(g_pico_type)
 				{
 					case PICO2000:
+						if( (args[0] == "WHITENOISE") || (args[0] == "PRBS") || (args[0] == "ARBITRARY") )
+						{
+							LogError("Requested waveform type %s is not supported on PS2000 hardware\n", args[0].c_str());
+							return true;
+						}
+						g_awgPS2000AWaveType = waveform->second.type2000;
+						g_awgPS2000AOperation = PS2000A_ES_OFF;
+						break;
 					case PICO2000A:
 						if( ( (args[0] == "WHITENOISE") || (args[0] == "PRBS") )
 								&& ( (g_model == "2204A") || (g_model == "2205A") ) )
@@ -1490,6 +1604,28 @@ void PicoSCPIServer::ReconfigAWG()
 	switch(g_pico_type)
 	{
 		case PICO2000:
+		{
+			Stop();
+			PS2000_WAVE_TYPE wave = ToPs2000WaveType(g_awgPS2000AWaveType);
+			int32_t offsetUv = static_cast<int32_t>(tempOffset * 1e6);
+			uint32_t pkToPkUv = static_cast<uint32_t>(tempRange * 1e6 * 2);
+			int16_t result = ps2000_set_sig_gen_built_in(
+						g_hScope,
+						offsetUv,
+						pkToPkUv,
+						wave,
+						static_cast<float>(freq),
+						static_cast<float>(freq),
+						0,
+						0,
+						PS2000_UP,
+						0);
+			if(result == 0)
+				LogError("ps2000_set_sig_gen_built_in failed\n");
+			if(g_triggerArmed)
+				StartCapture(false);
+			break;
+		}
 		case PICO2000A:
 			Stop(); // Need to stop acquisition when setting the AWG to avoid "PICO_BUSY" errors
 			if(g_awgPS2000AWaveType == PS2000A_SQUARE || g_awgPS2000AWaveType == PS2000A_MAX_WAVE_TYPES)
@@ -1522,21 +1658,21 @@ void PicoSCPIServer::ReconfigAWG()
 			else
 			{
 				status = ps2000aSetSigGenBuiltInV2(
-								  g_hScope,
-								  tempOffset*1e6,        //Offset Voltage in µV
-								  tempRange *1e6*2,      // Peak to Peak Range in µV
-								  g_awgPS2000AWaveType,
-								  freq,
-								  freq,
-								  inc,
-								  dwell,
-								  PS2000A_UP,
-								  g_awgPS2000AOperation,
-								  PS2000A_SHOT_SWEEP_TRIGGER_CONTINUOUS_RUN,  //run forever
-								  0,  //dont use sweeps
-								  PS2000A_SIGGEN_RISING,
-								  PS2000A_SIGGEN_NONE,
-								  0);                         // Tigger level (-32767 to 32767 -> -5 to 5 V)
+							  g_hScope,
+							  tempOffset*1e6,        //Offset Voltage in µV
+							  tempRange *1e6*2,      // Peak to Peak Range in µV
+							  g_awgPS2000AWaveType,
+							  freq,
+							  freq,
+							  inc,
+							  dwell,
+							  PS2000A_UP,
+							  g_awgPS2000AOperation,
+							  PS2000A_SHOT_SWEEP_TRIGGER_CONTINUOUS_RUN,  //run forever
+							  0,  //dont use sweeps
+							  PS2000A_SIGGEN_RISING,
+							  PS2000A_SIGGEN_NONE,
+							  0);                         // Tigger level (-32767 to 32767 -> -5 to 5 V)
 				if(PICO_OK != status)
 					LogError("ps2000aSetSigGenBuiltInV2 failed, code 0x%x\n", status);
 			}
@@ -1874,6 +2010,8 @@ void PicoSCPIServer::SetChannelEnabled(size_t chIndex, bool enabled)
 			switch(g_pico_type)
 			{
 				case PICO2000:
+					LogError("Digital pods are not supported on PS2000 hardware\n");
+					break;
 				case PICO2000A:
 					status = ps2000aSetDigitalPort(g_hScope, (PS2000A_DIGITAL_PORT)podId, 1, g_msoPodThreshold[podIndex][0]);
 					if(status != PICO_OK)
@@ -1927,6 +2065,8 @@ void PicoSCPIServer::SetChannelEnabled(size_t chIndex, bool enabled)
 			switch(g_pico_type)
 			{
 				case PICO2000:
+					LogError("Digital pods are not supported on PS2000 hardware\n");
+					break;
 				case PICO2000A:
 					status = ps2000aSetDigitalPort(g_hScope, (PS2000A_DIGITAL_PORT)podId, 0, 0);
 					if(status != PICO_OK)
@@ -2007,8 +2147,65 @@ void PicoSCPIServer::SetAnalogRange(size_t chIndex, double range_V)
 	switch(g_pico_type)
 	{
 		case PICO2000:
+			//Legacy 2000 series supports 10mV to 50V, no 50 ohm mode available
+			if(range_V > 25)
+			{
+				g_range_2000[channelId] = PS2000_50V;
+				g_roundedRange[channelId] = 50;
+			}
+			else if(range_V > 10)
+			{
+				g_range_2000[channelId] = PS2000_20V;
+				g_roundedRange[channelId] = 20;
+			}
+			else if(range_V > 5)
+			{
+				g_range_2000[channelId] = PS2000_10V;
+				g_roundedRange[channelId] = 10;
+			}
+			else if(range_V > 2)
+			{
+				g_range_2000[channelId] = PS2000_5V;
+				g_roundedRange[channelId] = 5;
+			}
+			else if(range_V > 1)
+			{
+				g_range_2000[channelId] = PS2000_2V;
+				g_roundedRange[channelId] = 2;
+			}
+			else if(range_V > 0.5)
+			{
+				g_range_2000[channelId] = PS2000_1V;
+				g_roundedRange[channelId] = 1;
+			}
+			else if(range_V > 0.2)
+			{
+				g_range_2000[channelId] = PS2000_500MV;
+				g_roundedRange[channelId] = 0.5;
+			}
+			else if(range_V > 0.1)
+			{
+				g_range_2000[channelId] = PS2000_200MV;
+				g_roundedRange[channelId] = 0.2;
+			}
+			else if(range_V > 0.05)
+			{
+				g_range_2000[channelId] = PS2000_100MV;
+				g_roundedRange[channelId] = 0.1;
+			}
+			else if(range_V > 0.02)
+			{
+				g_range_2000[channelId] = PS2000_50MV;
+				g_roundedRange[channelId] = 0.05;
+			}
+			else
+			{
+				g_range_2000[channelId] = PS2000_20MV;
+				g_roundedRange[channelId] = 0.02;
+			}
+			break;
 		case PICO2000A:
-			//2000 series uses passive probes only, 20mV to 20V, no 50 ohm mode available
+			//2000A series uses passive probes only, 20mV to 20V, no 50 ohm mode available
 			if(range_V > 10)
 			{
 				g_range_2000a[channelId] = PS2000A_20V;
@@ -2421,6 +2618,10 @@ void PicoSCPIServer::SetAnalogOffset(size_t chIndex, double offset_V)
 	switch(g_pico_type)
 	{
 		case PICO2000:
+			LogWarning("Analog offset adjustment is not supported on PS2000 hardware\n");
+			g_offset[channelId] = 0;
+			UpdateChannel(channelId);
+			return;
 		case PICO2000A:
 			ps2000aGetAnalogueOffset(g_hScope, g_range_2000a[channelId], (PS2000A_COUPLING)g_coupling[channelId], &maxoff_f, &minoff_f);
 			maxoff = maxoff_f;
@@ -2794,9 +2995,21 @@ void UpdateChannel(size_t chan)
 	switch(g_pico_type)
 	{
 		case PICO2000:
+		{
+			int16_t enabled = g_channelOn[chan] ? 1 : 0;
+			ps2000_set_channel(g_hScope,
+							 static_cast<int16_t>(chan),
+							 enabled,
+							 Ps2000Coupling(g_coupling[chan]),
+							 g_range_2000[chan]);
+			g_scaleValue = PS2000_MAX_VALUE;
+			if(chan == g_triggerChannel)
+				UpdateTrigger();
+			break;
+		}
 		case PICO2000A:
 			ps2000aSetChannel(g_hScope, (PS2000A_CHANNEL)chan, g_channelOn[chan],
-							  (PS2000A_COUPLING)g_coupling[chan], g_range_2000a[chan], -g_offset[chan]);
+						  (PS2000A_COUPLING)g_coupling[chan], g_range_2000a[chan], -g_offset[chan]);
 			ps2000aMaximumValue(g_hScope, &scaleVal);
 			g_scaleValue = scaleVal;
 
@@ -2941,6 +3154,53 @@ void UpdateTrigger(bool force)
 	switch(g_pico_type)
 	{
 		case PICO2000:
+			{
+				if( (g_triggerChannel >= g_numChannels) && (g_triggerChannel != PICO_TRIGGER_AUX) )
+				{
+					LogError("Digital triggering is not supported on PS2000 hardware\n");
+					break;
+				}
+
+				int16_t thresholdCode = static_cast<int16_t>(trig_code);
+				float delaySamples = -static_cast<float>(g_triggerSampleIndex);
+				if(delaySamples < -32767.0f)
+					delaySamples = -32767.0f;
+				int16_t autoTriggerMs = force ? 1 : 0;
+				PS2000_TDIR dir = ToPs2000Direction(g_triggerDirection);
+				if(g_triggerDirection == PICO_RISING_OR_FALLING)
+				{
+					LogWarning("PS2000 devices do not support ANY edge triggers, defaulting to RISING\n");
+					dir = PS2000_RISING;
+				}
+
+				int16_t source;
+				if(g_triggerChannel == PICO_TRIGGER_AUX)
+				{
+					source = PS2000_EXTERNAL;
+					thresholdCode = 0;
+				}
+				else
+				{
+					source = static_cast<int16_t>(ToPs2000Channel(g_triggerChannel));
+				}
+
+				if(source == PS2000_NONE)
+				{
+					LogError("Invalid trigger source for PS2000\n");
+					break;
+				}
+
+				int16_t ret = ps2000_set_trigger2(
+								 g_hScope,
+								 source,
+								 thresholdCode,
+								 dir,
+								 0.5,
+								 autoTriggerMs);
+				if(ret == 0)
+					LogError("ps2000_set_trigger2 failed\n");
+				break;
+			}
 		case PICO2000A:
 			if(g_triggerChannel == PICO_TRIGGER_AUX)
 			{
@@ -3444,6 +3704,9 @@ PICO_STATUS StartInternal()
 
 	switch(g_pico_type)
 	{
+		case PICO2000:
+			return ps2000_run_block(g_hScope, nPreTrigger_int + nPostTrigger_int, g_timebase, 1, NULL);
+			break;
 		case PICO2000A:
 			return ps2000aRunBlock(g_hScope, nPreTrigger_int, nPostTrigger_int, g_timebase, 1, NULL, 0, NULL, NULL);
 			break;
@@ -3525,6 +3788,11 @@ bool EnableMsoPod(size_t npod)
 	switch(g_pico_type)
 	{
 		case PICO2000:
+		{
+			LogWarning("PS2000 doesnt support MSO");
+			return false;
+			break;
+		}
 		case PICO2000A:
 		{
 			PS2000A_DIGITAL_PORT podId = (PS2000A_DIGITAL_PORT)(PS2000A_DIGITAL_PORT0 + npod);
