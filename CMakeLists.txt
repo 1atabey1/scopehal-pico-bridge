@@ -17,7 +17,7 @@ if(NOT (APPLE AND ${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "arm64"))
 endif()
 
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -fsanitize=address")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0")
 
 if(APPLE AND ${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "arm64")
 	# force x86 build, PicoSDK is only built for Intel macs as of 10.7.26.362, so arm64 can't link against it
