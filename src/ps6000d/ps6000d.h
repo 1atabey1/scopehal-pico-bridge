@@ -29,6 +29,7 @@
 
 #ifndef ps6000d_h
 #define ps6000d_h
+#define PS2000API
 
 #include "../../lib/log/log.h"
 #include "../../lib/xptools/Socket.h"
@@ -53,6 +54,7 @@
 
 enum PicoScopeType
 {
+	PICO2000,
 	PICO2000A,
 	PICO3000A,
 	PICO4000A,

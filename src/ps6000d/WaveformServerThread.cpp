@@ -92,6 +92,7 @@ void WaveformServerThread()
 			lock_guard<mutex> lock(g_mutex);
 			switch(g_pico_type)
 			{
+				case PICO2000:
 				case PICO2000A:
 					ps2000aIsReady(g_hScope, &ready);
 					break;
@@ -134,6 +135,7 @@ void WaveformServerThread()
 			PICO_STATUS status = PICO_OPERATION_FAILED;
 			switch(g_pico_type)
 			{
+				case PICO2000:
 				case PICO2000A:
 					status = ps2000aStop(g_hScope);
 					break;
@@ -168,6 +170,7 @@ void WaveformServerThread()
 				{
 					switch(g_pico_type)
 					{
+						case PICO2000:
 						case PICO2000A:
 							ps2000aSetDataBuffer(g_hScope, (PS2000A_CHANNEL)ch, NULL,
 												0, 0, PS2000A_RATIO_MODE_NONE);
@@ -217,6 +220,7 @@ void WaveformServerThread()
 					auto ch = g_channelIDs[i];
 					switch(g_pico_type)
 					{
+						case PICO2000:
 						case PICO2000A:
 							status = ps2000aSetDataBuffer(g_hScope, (PS2000A_CHANNEL)ch, waveformBuffers[i],
 														g_captureMemDepth, 0, PS2000A_RATIO_MODE_NONE);
@@ -255,6 +259,7 @@ void WaveformServerThread()
 			int16_t overflow = 0;
 			switch(g_pico_type)
 			{
+				case PICO2000:
 				case PICO2000A:
 					status = ps2000aGetValues(g_hScope, 0, &numSamples_int, 1, PS2000A_RATIO_MODE_NONE, 0, &overflow);
 					numSamples = numSamples_int;

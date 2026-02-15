@@ -34,11 +34,13 @@
  */
 
 #include "ps6000d.h"
+#include "ps2000.h"
 #include "PicoSCPIServer.h"
 #include <signal.h>
 
 PICO_STATUS (*picoGetUnitInfo) (int16_t, int8_t *, int16_t, int16_t *, PICO_INFO);
 PICO_INFO Open2000();
+PICO_INFO Open2000A();
 PICO_INFO Open3000();
 PICO_INFO Open4000();
 PICO_INFO Open5000();
@@ -159,6 +161,9 @@ int main(int argc, char* argv[])
 			status = Open2000();
 			if(status == 0)
 				break;
+			status = Open2000A();
+			if(status == 0)
+				break;
 			status = Open3000();
 			if(status == 0)
 				break;
@@ -175,6 +180,9 @@ int main(int argc, char* argv[])
 		{
 			status = Open2000();
 			break;
+			status = Open2000A();
+			if(status == 0)
+				break;
 		}
 		case 3:
 		{
@@ -205,11 +213,21 @@ int main(int argc, char* argv[])
 	}
 
 	//See what we got
+	if (PICO2000 == g_pico_type) 
+	{
+		char buf[128];
+		if (ps2000_get_unit_info(g_hScope, (int8_t*)buf, sizeof(buf), PS2000_VARIANT_INFO) == PICO_OK) 
+		{
+			LogVerbose("Variant info:  %s\n", buf);
+		}
+	}
+	else
 	{
 		LogIndenter li;
 
 		char buf[128];
 		int16_t required = 0;
+
 		status = picoGetUnitInfo(g_hScope, (int8_t*)buf, sizeof(buf), &required, PICO_DRIVER_VERSION);
 		if(status == PICO_OK)
 			LogVerbose("Driver version:   %s\n", buf);
@@ -300,6 +318,7 @@ int main(int argc, char* argv[])
 	{
 		switch(g_pico_type)
 		{
+			case PICO2000:
 			case PICO2000A:
 				ps2000aSetChannel(g_hScope, (PS2000A_CHANNEL)i, 0, PS2000A_DC, PS2000A_1V, 0.0f);
 				break;
@@ -426,6 +445,7 @@ int main(int argc, char* argv[])
 	//Done
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			ps2000aCloseUnit(g_hScope);
 			break;
@@ -462,6 +482,7 @@ void OnQuit(int /*signal*/)
 	lock_guard<mutex> lock(g_mutex);
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			ps2000aCloseUnit(g_hScope);
 			break;
@@ -487,14 +508,29 @@ void OnQuit(int /*signal*/)
 PICO_INFO Open2000()
 {
 	LogNotice("Looking for a PicoScope 2000 series instrument to open...\n");
+	g_hScope = ps2000_open_unit();
+	if(g_hScope > 0)
+	{
+		g_series = 2;
+		g_pico_type = PICO2000;
+		picoGetUnitInfo = nullptr;
+		return PICO_OK;
+	}
+	return PICO_NOT_FOUND;
+}
+PICO_INFO Open2000A()
+{
+	LogNotice("Looking for a PicoScope 2000A series instrument to open...\n");
+	g_hScope = ps2000_open_unit();
 	PICO_INFO status = ps2000aOpenUnit(&g_hScope, NULL);
 	if(status == PICO_OK)
 	{
 		g_series = 2;
 		g_pico_type = PICO2000A;
-		picoGetUnitInfo = ps2000aGetUnitInfo;
+		picoGetUnitInfo = nullptr;
+		return PICO_OK;
 	}
-	return status;
+	return PICO_NOT_FOUND;
 }
 PICO_INFO Open3000()
 {

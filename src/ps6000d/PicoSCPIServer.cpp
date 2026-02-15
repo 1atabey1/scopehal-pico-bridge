@@ -313,6 +313,7 @@ PicoSCPIServer::~PicoSCPIServer()
 	{
 		switch(g_pico_type)
 		{
+			case PICO2000:
 			case PICO2000A:
 				ps2000aSetChannel(g_hScope, (PS2000A_CHANNEL)it.first, 0, PS2000A_DC, PS2000A_1V, 0.0f);
 				break;
@@ -341,6 +342,7 @@ PicoSCPIServer::~PicoSCPIServer()
 	{
 		switch(g_pico_type)
 		{
+			case PICO2000:
 			case PICO2000A:
 				ps2000aSetDigitalPort(g_hScope, (PS2000A_DIGITAL_PORT)(PICO_PORT0 + i), 0, 0);
 				break;
@@ -464,6 +466,7 @@ bool PicoSCPIServer::OnQuery(
 
 		switch(g_pico_type)
 		{
+			case PICO2000:
 			case PICO2000A:
 				//no limiter available
 				break;
@@ -544,6 +547,7 @@ vector<size_t> PicoSCPIServer::GetSampleRates()
 	//Enumerate timebases
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			if(g_model.find("2205MSO") != string::npos)
 			{
@@ -700,6 +704,7 @@ vector<size_t> PicoSCPIServer::GetSampleRates()
 
 		switch(g_pico_type)
 		{
+			case PICO2000:
 			case PICO2000A:
 				status = ps2000aGetTimebase2(g_hScope, i, 1, &intervalNs_f, 1, &maxSamples_int, 0);
 				maxSamples = maxSamples_int;
@@ -770,6 +775,7 @@ vector<size_t> PicoSCPIServer::GetSampleDepths()
 	int ntimebase = 10;
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			status = ps2000aGetTimebase2(g_hScope, ntimebase, 1, &intervalNs_f, 1, &maxSamples_int, 0);
 			maxSamples = maxSamples_int;
@@ -855,6 +861,7 @@ bool PicoSCPIServer::OnCommand(
 			uint32_t status = PICO_OK;
 			switch(g_pico_type)
 			{
+				case PICO2000:
 				case PICO2000A:
 					tempRange = g_awgRange;
 					tempOffset = g_awgOffset;
@@ -979,6 +986,7 @@ bool PicoSCPIServer::OnCommand(
 
 				switch(g_pico_type)
 				{
+					case PICO2000:
 					case PICO2000A:
 						//handled by ReconfigAWG()
 						break;
@@ -1017,6 +1025,7 @@ bool PicoSCPIServer::OnCommand(
 
 				switch(g_pico_type)
 				{
+					case PICO2000:
 					case PICO2000A:
 						/* DutyCycle of square wave can not be controlled in ps2000a built in generator,
 						Must be implemented via Arbitrary*/
@@ -1094,6 +1103,7 @@ bool PicoSCPIServer::OnCommand(
 				uint32_t status = PICO_OK;
 				switch(g_pico_type)
 				{
+					case PICO2000:
 					case PICO2000A:
 						if( ( (args[0] == "WHITENOISE") || (args[0] == "PRBS") )
 								&& ( (g_model == "2204A") || (g_model == "2205A") ) )
@@ -1201,6 +1211,7 @@ bool PicoSCPIServer::OnCommand(
 		int bits = stoi(args[0]);
 		switch(g_pico_type)
 		{
+			case PICO2000:
 			case PICO2000A:
 				g_adcBits = 8;
 				return false;
@@ -1406,6 +1417,7 @@ void PicoSCPIServer::SetChannelBandwidthLimiter(size_t chan, unsigned int limit_
 
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			//no limiters on this series
 			break;
@@ -1477,6 +1489,7 @@ void PicoSCPIServer::ReconfigAWG()
 
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			Stop(); // Need to stop acquisition when setting the AWG to avoid "PICO_BUSY" errors
 			if(g_awgPS2000AWaveType == PS2000A_SQUARE || g_awgPS2000AWaveType == PS2000A_MAX_WAVE_TYPES)
@@ -1860,6 +1873,7 @@ void PicoSCPIServer::SetChannelEnabled(size_t chIndex, bool enabled)
 		{
 			switch(g_pico_type)
 			{
+				case PICO2000:
 				case PICO2000A:
 					status = ps2000aSetDigitalPort(g_hScope, (PS2000A_DIGITAL_PORT)podId, 1, g_msoPodThreshold[podIndex][0]);
 					if(status != PICO_OK)
@@ -1912,6 +1926,7 @@ void PicoSCPIServer::SetChannelEnabled(size_t chIndex, bool enabled)
 		{
 			switch(g_pico_type)
 			{
+				case PICO2000:
 				case PICO2000A:
 					status = ps2000aSetDigitalPort(g_hScope, (PS2000A_DIGITAL_PORT)podId, 0, 0);
 					if(status != PICO_OK)
@@ -1991,6 +2006,7 @@ void PicoSCPIServer::SetAnalogRange(size_t chIndex, double range_V)
 
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			//2000 series uses passive probes only, 20mV to 20V, no 50 ohm mode available
 			if(range_V > 10)
@@ -2404,6 +2420,7 @@ void PicoSCPIServer::SetAnalogOffset(size_t chIndex, double offset_V)
 	//Clamp to allowed range
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			ps2000aGetAnalogueOffset(g_hScope, g_range_2000a[channelId], (PS2000A_COUPLING)g_coupling[channelId], &maxoff_f, &minoff_f);
 			maxoff = maxoff_f;
@@ -2516,6 +2533,7 @@ void PicoSCPIServer::SetSampleRate(uint64_t rate_hz)
 
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			if(g_model.find("2205MSO") != string::npos)
 			{
@@ -2775,6 +2793,7 @@ void UpdateChannel(size_t chan)
 
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			ps2000aSetChannel(g_hScope, (PS2000A_CHANNEL)chan, g_channelOn[chan],
 							  (PS2000A_COUPLING)g_coupling[chan], g_range_2000a[chan], -g_offset[chan]);
@@ -2921,6 +2940,7 @@ void UpdateTrigger(bool force)
 
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			if(g_triggerChannel == PICO_TRIGGER_AUX)
 			{
@@ -3390,6 +3410,7 @@ void Stop()
 {
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 			ps2000aStop(g_hScope);
 			break;
@@ -3503,6 +3524,7 @@ bool EnableMsoPod(size_t npod)
 
 	switch(g_pico_type)
 	{
+		case PICO2000:
 		case PICO2000A:
 		{
 			PS2000A_DIGITAL_PORT podId = (PS2000A_DIGITAL_PORT)(PS2000A_DIGITAL_PORT0 + npod);

@@ -53,6 +53,7 @@ if(WIN32)
 	xptools
 	log
 	scpi-server-tools
+	${PICO_SDK_PATH}/lib/ps2000.lib
 	${PICO_SDK_PATH}/lib/ps2000a.lib
 	${PICO_SDK_PATH}/lib/ps3000a.lib
 	${PICO_SDK_PATH}/lib/ps4000a.lib
